@@ -18,6 +18,9 @@ const DMC_SHIFT = false  # shift energies to the continuum "DMC zero" via mathie
 nsweeps = 10
 maxdims = [10, 20, 50, 100, 200]
 cutoff = 1e-10
+unitcell_size = 2
+max_occupancy = 2
+nsteps_per_stage = 3
 
 parent_folder = PREFIX
 
@@ -50,6 +53,7 @@ total = generate_folders(;
     Jxy_values, Jz_values, hx_values, hz_values,
     t_values, h_values, V0_values, kL, N1_values, dmc_shift=DMC_SHIFT,
     prefix=PREFIX, parent_folder, nsweeps, maxdims, cutoff,
+    unitcell_size, max_occupancy, nsteps_per_stage,
 )
 
 println("Total folders created: $total")

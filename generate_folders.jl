@@ -37,6 +37,7 @@ function generate_folders(;
     maxdims::Vector{Int}=[10, 20, 50, 100, 200],
     cutoff::Float64=1e-10,
     unitcell_size::Int=2,
+    max_occupancy::Int=2,
     nsteps_per_stage::Int=3,
 )
     model in MODELS || throw(ArgumentError("model must be one of $(join(MODELS, ", "))"))
@@ -45,8 +46,6 @@ function generate_folders(;
     is_native = !is_rabi && coupling_source == COUPLING_NATIVE
 
     if is_rabi
-        solver == SOLVER_IDMRG &&
-            throw(ArgumentError("solver=$SOLVER_IDMRG is only supported for model=$MODEL_XXZ/$MODEL_TFIM"))
         coupling_source == COUPLING_RBH ||
             throw(ArgumentError("coupling_source is only used for model=$MODEL_XXZ/$MODEL_TFIM"))
         isempty(L_values) ||
@@ -61,8 +60,17 @@ function generate_folders(;
         !dmc_shift || throw(ArgumentError("dmc_shift is only meaningful for model=$MODEL_RABI"))
     end
     if solver == SOLVER_IDMRG
-        unitcell_size >= 2 && iseven(unitcell_size) ||
-            throw(ArgumentError("unitcell_size must be an even integer >= 2 for solver=$SOLVER_IDMRG"))
+        if is_rabi
+            unitcell_size >= 1 ||
+                throw(ArgumentError("unitcell_size must be positive for RBH iDMRG"))
+            max_occupancy >= 1 ||
+                throw(ArgumentError("max_occupancy must be positive for RBH iDMRG"))
+            all(pair -> pair[1] == pair[2], size_pairs) ||
+                throw(ArgumentError("RBH iDMRG requires unit filling: every size pair must have N == L"))
+        else
+            unitcell_size >= 2 && iseven(unitcell_size) ||
+                throw(ArgumentError("unitcell_size must be an even integer >= 2 for solver=$SOLVER_IDMRG"))
+        end
         nsteps_per_stage >= 3 && isodd(nsteps_per_stage) ||
             throw(ArgumentError("nsteps_per_stage must be an odd integer >= 3"))
     end
@@ -146,7 +154,8 @@ function generate_folders(;
                 _write_rabi_folder(;
                     parent_folder, prefix, solver, N, L, J, U_a=U, U_b=U, U_ab, t, h,
                     V0=V0_energy, V0_recoil=combo.V0_recoil, kL=combo.kL, N1, dmc_shift,
-                    nsweeps, maxdims, cutoff, extra_fields=combo.extra_fields,
+                    nsweeps, maxdims, cutoff, unitcell_size, max_occupancy,
+                    nsteps_per_stage, extra_fields=combo.extra_fields,
                 )
                 count += 1
             end
@@ -217,13 +226,16 @@ function _write_rabi_folder(;
     t::Real, h::Real, V0::Real, V0_recoil::Real, kL::Real,
     N1::Union{Nothing,Int}, dmc_shift::Bool,
     nsweeps::Int, maxdims::Vector{Int}, cutoff::Real,
+    unitcell_size::Int, max_occupancy::Int, nsteps_per_stage::Int,
     extra_fields::Vector{Pair{String,Float64}}=Pair{String,Float64}[],
 )
     n1_tag = N1 === nothing ? "" : @sprintf("_N1_%d", N1)
+    unitcell_tag = solver == SOLVER_IDMRG ?
+        @sprintf("_uc%d_nmax%d", unitcell_size, max_occupancy) : ""
     folder_name = @sprintf(
         "%s_%s_%s_N%d_L%d_J%.6f_U%.6f_Uab%.6f_t%.6f_h%.6f_V0%.6f",
         prefix, MODEL_RABI, solver, N, L, J, U_a, U_ab, t, h, V0_recoil,
-    ) * n1_tag
+    ) * n1_tag * unitcell_tag
     folder = _create_folder(parent_folder, folder_name)
 
     open(joinpath(folder, "params.dat"), "w") do f
@@ -244,10 +256,15 @@ function _write_rabi_folder(;
         for (key, val) in extra_fields
             @printf(f, "%-20s%.12f\n", key, val)
         end
-        if solver == SOLVER_DMRG
+        if solver == SOLVER_DMRG || solver == SOLVER_IDMRG
             println(f, "nsweeps             $nsweeps")
             println(f, "maxdims             $(join(maxdims, ","))")
             @printf(f, "cutoff              %.3e\n", cutoff)
+            if solver == SOLVER_IDMRG
+                println(f, "unitcell_size       $unitcell_size")
+                println(f, "max_occupancy       $max_occupancy")
+                println(f, "nsteps_per_stage    $nsteps_per_stage")
+            end
         end
     end
 

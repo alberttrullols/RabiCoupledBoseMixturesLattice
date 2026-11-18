@@ -105,7 +105,9 @@ struct HTerm
     coeff::Float64
 end
 
-function hamiltonian_terms(p::RabiParams)
+function hamiltonian_terms(p::RabiParams; boundary::Symbol=:periodic)
+    boundary in (:open, :periodic) ||
+        throw(ArgumentError("boundary must be :open or :periodic"))
     terms = HTerm[]
     for i in 1:p.L
         p.U_a  != 0 && push!(terms, HTerm(:onsite_a,  (i,), p.U_a))
@@ -114,7 +116,8 @@ function hamiltonian_terms(p::RabiParams)
         p.h    != 0 && push!(terms, HTerm(:bias,      (i,), p.h))
         p.t    != 0 && push!(terms, HTerm(:rabi,      (i,), p.t))
     end
-    for (i, j) in ring_bonds(p.L)
+    bonds = boundary == :periodic ? ring_bonds(p.L) : [(i, i + 1) for i in 1:(p.L - 1)]
+    for (i, j) in bonds
         push!(terms, HTerm(:hop_a, (i, j), p.J))
         push!(terms, HTerm(:hop_b, (i, j), p.J))
     end
@@ -193,12 +196,12 @@ end
 
 # DMRG Hamiltonian (MPO on an interleaved 2L-site chain)
 
-function build_mpo_hamiltonian(p::RabiParams, sites)
+function build_mpo_hamiltonian(p::RabiParams, sites; boundary::Symbol=:periodic)
     length(sites) == 2p.L ||
         throw(ArgumentError("Expected 2L = $(2p.L) sites, got $(length(sites))"))
     os = OpSum()
-    for term in hamiltonian_terms(p)
-        _add_mpo_term!(os, term)
+    for term in hamiltonian_terms(p; boundary)
+        os = _add_mpo_term!(os, term)
     end
     return MPO(os, sites)
 end
@@ -237,7 +240,7 @@ function _add_mpo_term!(os::OpSum, term::HTerm)
     else
         throw(ArgumentError("Unknown Hamiltonian term kind $(kind)"))
     end
-    return nothing
+    return os
 end
 
 end # module
