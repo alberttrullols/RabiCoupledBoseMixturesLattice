@@ -1,6 +1,7 @@
 const SOLVER_ED   = "ed"
 const SOLVER_DMRG = "dmrg"
-const SOLVERS = (SOLVER_ED, SOLVER_DMRG)
+const SOLVER_IDMRG = "idmrg"
+const SOLVERS = (SOLVER_ED, SOLVER_DMRG, SOLVER_IDMRG)
 
 
 const MODEL_RABI = "rabi"
