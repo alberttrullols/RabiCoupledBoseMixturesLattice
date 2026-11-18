@@ -36,6 +36,8 @@ function generate_folders(;
     nsweeps::Int=10,
     maxdims::Vector{Int}=[10, 20, 50, 100, 200],
     cutoff::Float64=1e-10,
+    unitcell_size::Int=2,
+    nsteps_per_stage::Int=3,
 )
     model in MODELS || throw(ArgumentError("model must be one of $(join(MODELS, ", "))"))
     solver in SOLVERS || throw(ArgumentError("solver must be one of $(join(SOLVERS, ", "))"))
@@ -43,6 +45,8 @@ function generate_folders(;
     is_native = !is_rabi && coupling_source == COUPLING_NATIVE
 
     if is_rabi
+        solver == SOLVER_IDMRG &&
+            throw(ArgumentError("solver=$SOLVER_IDMRG is only supported for model=$MODEL_XXZ/$MODEL_TFIM"))
         coupling_source == COUPLING_RBH ||
             throw(ArgumentError("coupling_source is only used for model=$MODEL_XXZ/$MODEL_TFIM"))
         isempty(L_values) ||
@@ -55,6 +59,12 @@ function generate_folders(;
         isempty(N1_values) ||
             throw(ArgumentError("N1_values is only supported by model=$MODEL_RABI"))
         !dmc_shift || throw(ArgumentError("dmc_shift is only meaningful for model=$MODEL_RABI"))
+    end
+    if solver == SOLVER_IDMRG
+        unitcell_size >= 2 && iseven(unitcell_size) ||
+            throw(ArgumentError("unitcell_size must be an even integer >= 2 for solver=$SOLVER_IDMRG"))
+        nsteps_per_stage >= 3 && isodd(nsteps_per_stage) ||
+            throw(ArgumentError("nsteps_per_stage must be an odd integer >= 3"))
     end
 
     if is_native
@@ -113,7 +123,7 @@ function generate_folders(;
             SpinParams(; L, Jxy, Jz, hx, hz)
             _write_spin_native_folder(;
                 parent_folder, prefix, model, solver, L, Jxy, Jz, hx, hz,
-                nsweeps, maxdims, cutoff,
+                nsweeps, maxdims, cutoff, unitcell_size, nsteps_per_stage,
             )
             count += 1
         end
@@ -147,7 +157,8 @@ function generate_folders(;
                 parent_folder, prefix, model, solver, N, L, J, U_a=U, U_b=U, U_ab, t, h,
                 Jxy=sp.Jxy, Jz=sp.Jz, hx=sp.hx, hz=sp.hz, C,
                 V0_recoil=combo.V0_recoil, kL=combo.kL,
-                nsweeps, maxdims, cutoff, extra_fields=combo.extra_fields,
+                nsweeps, maxdims, cutoff, unitcell_size, nsteps_per_stage,
+                extra_fields=combo.extra_fields,
             )
             count += 1
         end
@@ -250,12 +261,14 @@ function _write_spin_rbh_folder(;
     Jxy::Real, Jz::Real, hx::Real, hz::Real, C::Real,
     V0_recoil::Real, kL::Real,
     nsweeps::Int, maxdims::Vector{Int}, cutoff::Real,
+    unitcell_size::Int, nsteps_per_stage::Int,
     extra_fields::Vector{Pair{String,Float64}}=Pair{String,Float64}[],
 )
+    unitcell_tag = solver == SOLVER_IDMRG ? @sprintf("_uc%d", unitcell_size) : ""
     folder_name = @sprintf(
         "%s_%s_%s_N%d_L%d_J%.6f_U%.6f_Uab%.6f_t%.6f_h%.6f",
         prefix, model, solver, N, L, J, U_a, U_ab, t, h,
-    )
+    ) * unitcell_tag
     folder = _create_folder(parent_folder, folder_name)
 
     open(joinpath(folder, "params.dat"), "w") do f
@@ -282,10 +295,14 @@ function _write_spin_rbh_folder(;
                 @printf(f, "%-20s%.12f\n", key, val)
             end
         end
-        if solver == SOLVER_DMRG
+        if solver == SOLVER_DMRG || solver == SOLVER_IDMRG
             println(f, "nsweeps             $nsweeps")
             println(f, "maxdims             $(join(maxdims, ","))")
             @printf(f, "cutoff              %.3e\n", cutoff)
+            if solver == SOLVER_IDMRG
+                println(f, "unitcell_size       $unitcell_size")
+                println(f, "nsteps_per_stage    $nsteps_per_stage")
+            end
         end
     end
 
@@ -297,11 +314,13 @@ function _write_spin_native_folder(;
     parent_folder::String, prefix::String, model::String, solver::String,
     L::Int, Jxy::Real, Jz::Real, hx::Real, hz::Real,
     nsweeps::Int, maxdims::Vector{Int}, cutoff::Real,
+    unitcell_size::Int, nsteps_per_stage::Int,
 )
+    unitcell_tag = solver == SOLVER_IDMRG ? @sprintf("_uc%d", unitcell_size) : ""
     folder_name = @sprintf(
         "%s_%s_%s_L%d_Jxy%.6f_Jz%.6f_hx%.6f_hz%.6f",
         prefix, model, solver, L, Jxy, Jz, hx, hz,
-    )
+    ) * unitcell_tag
     folder = _create_folder(parent_folder, folder_name)
 
     open(joinpath(folder, "params.dat"), "w") do f
@@ -313,10 +332,14 @@ function _write_spin_native_folder(;
         @printf(f, "Jz                  %.12f\n", Jz)
         @printf(f, "hx                  %.12f\n", hx)
         @printf(f, "hz                  %.12f\n", hz)
-        if solver == SOLVER_DMRG
+        if solver == SOLVER_DMRG || solver == SOLVER_IDMRG
             println(f, "nsweeps             $nsweeps")
             println(f, "maxdims             $(join(maxdims, ","))")
             @printf(f, "cutoff              %.3e\n", cutoff)
+            if solver == SOLVER_IDMRG
+                println(f, "unitcell_size       $unitcell_size")
+                println(f, "nsteps_per_stage    $nsteps_per_stage")
+            end
         end
     end
 

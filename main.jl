@@ -14,7 +14,7 @@ h_values = [0.0]
 N1_values = Int[]  
 const DMC_SHIFT = false  # shift energies to the continuum "DMC zero" via mathieu_band_edges
 
-# DMRG-only solver settings
+# DMRG/iDMRG solver settings
 nsweeps = 10
 maxdims = [10, 20, 50, 100, 200]
 cutoff = 1e-10
