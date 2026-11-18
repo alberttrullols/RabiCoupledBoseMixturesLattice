@@ -123,12 +123,6 @@ function transverse_polarization(psi::MPS, p::RabiParams)
     return total / p.N
 end
 
-# ---------------------------------------------------------------------
-# Spin-1/2 XXZ/TFIM models (XXZModel.SpinParams): ED on the 2^L bit basis
-# (bit i-1 of the state index is site i's spin, 1 = up), or DMRG on an
-# L-site "S=1/2" MPS. d_i = 2*Sz_i = +-1 plays the same role as
-# n_{a,i}-n_{b,i} did for the Rabi model, and L plays the role of N.
-# ---------------------------------------------------------------------
 
 function polarization_moment(psi::AbstractVector{<:Number}, L::Int, order::Int)
     dim = 2^L

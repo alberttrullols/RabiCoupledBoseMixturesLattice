@@ -7,98 +7,6 @@ include(joinpath(@__DIR__, "src", "models", "xxz_model.jl"))
 using .XXZModel
 include(joinpath(@__DIR__, "src", "lattice_parameters.jl"))
 
-"""
-    generate_folders(; model=MODEL_RABI, solver, parametrization=PARAM_LATTICE,
-                      coupling_source=COUPLING_RBH,
-                      size_pairs, L_values,                     # (N,L) pairs, or spin-native L sweep
-                      t_values, h_values=[0.0], V0_values=[0.0], kL=π,
-                      J_values, U_values, U_ab_values,           # parametrization = "lattice"
-                      g_values, g12_values,                      # parametrization = "microscopic"
-                      Jxy_values, Jz_values, hx_values, hz_values,   # coupling_source = "native"
-                      wannier_cutoff=12, wannier_points_per_site=500,
-                      N1_values=Int[], dmc_shift=false,
-                      prefix="run", parent_folder="",
-                      nsweeps=10, maxdims=[10,20,50,100,200], cutoff=1e-10)
-
-Create one subfolder per combination of the swept parameters, each
-containing a self-describing `params.dat` text file. `model` (one of
-`MODELS`) and `solver` (one of `SOLVERS`) are single choices applied to
-every folder in this call; call `generate_folders` again to also
-generate folders for other models/solvers.
-
-# Model selection (`model`)
-
-  - `MODEL_RABI` (default): the full two-component Rabi-coupled
-    Bose-Hubbard ring. Uses `size_pairs`, `parametrization`,
-    `J_values`/`U_values`/`U_ab_values` or `g_values`/`g12_values`,
-    `t_values`, `h_values`, `V0_values`, `kL`, `N1_values`, `dmc_shift` --
-    exactly as before `model` existed. `coupling_source`, `L_values` and
-    the native spin-coupling lists are not used (must be left at their
-    defaults/empty).
-  - `MODEL_XXZ` / `MODEL_TFIM`: the effective spin-1/2 XXZ ring in
-    transverse+longitudinal field (TFIM is the same Hamiltonian with the
-    sigma+sigma- "XY" term switched off, chosen automatically by `model`).
-    Governed by `coupling_source`:
-      - `COUPLING_RBH` (default): derive the spin couplings from
-        Rabi-Bose-Hubbard parameters via second-order degenerate
-        perturbation theory (`XXZModel.rbh_to_xxz_params`), using the same
-        `size_pairs`/`parametrization`/`J_values`.../`t_values`/`h_values`/
-        `V0_values` machinery as `MODEL_RABI` (unit filling `N == L` is
-        required and enforced by `rbh_to_xxz_params` itself). `N1_values`
-        and `dmc_shift` are not applicable to spin models and must be
-        left empty/`false`.
-      - `COUPLING_NATIVE`: give the spin couplings directly via
-        `L_values` (ring sizes, replacing `size_pairs`), `Jz_values`
-        (required), and optional `Jxy_values`/`hx_values`/`hz_values`
-        (each defaulting to `[0.0]` if left empty). None of
-        `size_pairs`/`t_values`/`h_values`/`J_values`/`U_values`/
-        `U_ab_values`/`g_values`/`g12_values`/`V0_values` are used in this
-        mode (`h_values` must be left at its default `[0.0]`; the other
-        unused lists must be empty).
-
-# Interaction parametrization (`parametrization`, for `MODEL_RABI` and
-  `MODEL_XXZ`/`MODEL_TFIM` with `coupling_source = COUPLING_RBH`)
-
-The model always assumes a-b (intra-species) symmetry, so there is a
-single interaction strength per site (`U` in `PARAM_LATTICE`, `g` in
-`PARAM_MICROSCOPIC`) rather than independent `U_a`/`U_b` or `g_up`/`g_down`.
-
-`V0_values` is always given in recoil units (`V0 / E_r`); for `MODEL_RABI`
-it is converted to the absolute energy `V0_energy = V0 * kL^2 / 2` that
-`params.dat` stores and that the ED/DMRG solvers' `mathieu_band_edges`/
-`dmc_shift` step actually consumes. For spin models it is only used (and
-only written to `params.dat`) when `parametrization = PARAM_MICROSCOPIC`,
-since that is the only case where it enters the physics (via the Wannier
-calculation below); with `PARAM_LATTICE` it has no effect on a spin
-model's folders, so prefer a single-element `V0_values` there to avoid
-generating physically-identical duplicate folders.
-
-  - `PARAM_LATTICE` (default): provide `J_values`, `U_values` and
-    `U_ab_values` directly; `kL` (default `pi`) is used by `MODEL_RABI` to
-    convert `V0_values` to the absolute `V0_energy`.
-  - `PARAM_MICROSCOPIC`: provide `g_values` and `g12_values` instead;
-    `J`, `U = g * onsite_overlap` and `U_ab = g12 * onsite_overlap` are
-    derived from `V0_values` (and the ring geometry) via
-    `compute_lattice_parameters`, assuming unit lattice spacing (continuum
-    box length `L_box = L`, so `kL = pi` is derived, not taken from the
-    `kL` keyword). Since `J` and the onsite overlap depend only on
-    `(V0, L)` and not on `g`/`g12`, the Wannier calculation is only done
-    once per `(N, L, V0)` combination and then reused for every
-    `(g, g12)` pair.
-
-Every combination is validated through the corresponding solver's own
-parameter type (`RabiModel.RabiParams` for `MODEL_RABI`,
-`XXZModel.SpinParams` for spin models, and `XXZModel.rbh_to_xxz_params`'s
-own checks -- including unit filling `N == L` -- for `coupling_source =
-COUPLING_RBH`), i.e. the exact same checks the solvers themselves apply,
-so an invalid combination fails here instead of silently creating an
-unrunnable folder.
-
-`nsweeps`/`maxdims`/`cutoff` are DMRG-only numerical settings (ignored,
-and not written to params.dat, when `solver == SOLVER_ED`).
-
-Returns the number of folders created.
-"""
 function generate_folders(;
     model::String=MODEL_RABI,
     solver::String,
@@ -248,8 +156,7 @@ function generate_folders(;
     return count
 end
 
-# Shared lattice/microscopic derivation of (J, U, U_ab), reused by both
-# model=rabi and model=xxz/tfim with coupling_source=rbh.
+# Shared lattice/microscopic derivation of (J, U, U_ab), reused by both model=rabi and model=xxz/tfim with coupling_source=rbh.
 function _lattice_param_combos(;
     parametrization::String, size_pairs::Vector{Tuple{Int,Int}},
     J_values::Vector{Float64}, U_values::Vector{Float64}, U_ab_values::Vector{Float64},
@@ -264,9 +171,6 @@ function _lattice_param_combos(;
         end
     else
         for (N, L) in size_pairs, V0 in V0_values
-            # J and the onsite overlap depend only on (V0, L), so the
-            # (expensive) Wannier calculation is cached here and reused
-            # for every (g, g12) combination below.
             L_box = Float64(L)
             lattice = compute_lattice_parameters(;
                 L=L_box, lattice_sites=L, V0=V0, g_up=1.0, g_down=1.0, g_updown=1.0,

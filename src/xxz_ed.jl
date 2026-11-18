@@ -9,13 +9,7 @@ isdefined(@__MODULE__, :XXZModel) || include(joinpath(@__DIR__, "models", "xxz_m
 using .XXZModel
 include(joinpath(@__DIR__, "observables.jl"))
 
-"""
-    spin_ground_state(params::SpinParams; include_xy=true, krylov=true)
 
-Shared ED ground-state routine for a native `SpinParams` (see
-XXZModel.build_ed_hamiltonian). `include_xy=false` gives the
-transverse-field Ising model (TFIM). Returns `(E, psi)`.
-"""
 function spin_ground_state(params::SpinParams; include_xy::Bool=true, krylov::Bool=true)
     H = XXZModel.build_ed_hamiltonian(params; include_xy)
     dim = 2^params.L
@@ -33,12 +27,7 @@ function spin_ground_state(params::SpinParams; include_xy::Bool=true, krylov::Bo
     return E0, psi0
 end
 
-"""
-    xxz_ground_state(L; Jxy=0.0, Jz, hx=0.0, hz=0.0, include_xy=true, krylov=true)
 
-ED ground state of the native spin-1/2 XXZ(+field) ring. Returns
-`(E, psi, params)`.
-"""
 function xxz_ground_state(
     L::Int; Jxy::Real=0.0, Jz::Real, hx::Real=0.0, hz::Real=0.0,
     include_xy::Bool=true, krylov::Bool=true,
@@ -48,16 +37,7 @@ function xxz_ground_state(
     return E0, psi0, params
 end
 
-"""
-    xxz_ground_state_from_rbh(N, L, J, U, U_ab, t, h=0.0; include_xy=true, krylov=true)
 
-ED ground state of the spin-1/2 effective model derived from the
-Rabi-coupled Bose-Hubbard ring at unit filling (N == L) via second-order
-degenerate perturbation theory (XXZModel.rbh_to_xxz_params).
-`include_xy=false` gives the transverse-field Ising model (TFIM). Returns
-`(E_total, psi, params, C)`, with `E_total = E_spin + L * C` the
-Rabi-comparable total energy.
-"""
 function xxz_ground_state_from_rbh(
     N::Int, L::Int, J::Real, U::Real, U_ab::Real, t::Real, h::Real=0.0;
     include_xy::Bool=true, krylov::Bool=true,
