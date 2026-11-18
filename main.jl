@@ -1,3 +1,6 @@
+import Pkg
+Pkg.activate(@__DIR__)
+
 include(joinpath(@__DIR__, "generate_folders.jl"))
 
 const MODEL = MODEL_RABI                # or MODEL_XXZ / MODEL_TFIM

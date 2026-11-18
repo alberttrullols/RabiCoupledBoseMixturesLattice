@@ -135,6 +135,7 @@ function generate_folders(;
             )
             count += 1
         end
+        isempty(parent_folder) || _write_run_all_script(parent_folder)
         return count
     end
 
@@ -173,6 +174,7 @@ function generate_folders(;
         end
     end
 
+    isempty(parent_folder) || _write_run_all_script(parent_folder)
     return count
 end
 
@@ -218,6 +220,53 @@ function _create_folder(parent_folder::String, folder_name::String)
     folder = isempty(parent_folder) ? folder_name : joinpath(parent_folder, folder_name)
     mkpath(folder)
     return folder
+end
+
+function _write_run_script(folder::String)
+    runner_path = relpath(joinpath(@__DIR__, "run_simulation.jl"), abspath(folder))
+    project_path = relpath(@__DIR__, abspath(folder))
+    run_script = joinpath(folder, "run.sh")
+    open(run_script, "w") do f
+        println(f, "#!/usr/bin/env bash")
+        println(f, "set -euo pipefail")
+        println(f, "cd \"\$(dirname \"\$0\")\"")
+        println(f, "julia_bin=\"\${JULIA:-julia}\"")
+        println(f, "if ! command -v \"\$julia_bin\" >/dev/null 2>&1; then")
+        println(f, "    printf 'Julia executable not found: %s\\n' \"\$julia_bin\" >&2")
+        println(f, "    exit 127")
+        println(f, "fi")
+        println(f, "version=\"\$(\"\$julia_bin\" --version)\"")
+        println(f, "if [[ ! \"\$version\" =~ ^julia\\ version\\ ([0-9]+)\\.([0-9]+) ]]; then")
+        println(f, "    printf 'Could not determine Julia version from: %s\\n' \"\$version\" >&2")
+        println(f, "    exit 1")
+        println(f, "fi")
+        println(f, "major=\"\${BASH_REMATCH[1]}\"")
+        println(f, "minor=\"\${BASH_REMATCH[2]}\"")
+        println(f, "if (( major != 1 || minor < 12 )); then")
+        println(f, "    printf 'Julia 1.12 or later 1.x is required (found %s). Set JULIA to a compatible executable.\\n' \"\$version\" >&2")
+        println(f, "    exit 1")
+        println(f, "fi")
+        println(f, "\"\$julia_bin\" --project=\"$project_path\" -t auto \"$runner_path\" params.dat 2>&1 | tee run.log")
+    end
+    chmod(run_script, 0o755)
+    return nothing
+end
+
+function _write_run_all_script(parent_folder::String)
+    mkpath(parent_folder)
+    run_script = joinpath(parent_folder, "run_all.sh")
+    open(run_script, "w") do f
+        println(f, "#!/usr/bin/env bash")
+        println(f, "set -euo pipefail")
+        println(f, "cd \"\$(dirname \"\$0\")\"")
+        println(f, "shopt -s nullglob")
+        println(f, "for run_script in */run.sh; do")
+        println(f, "    printf 'Running %s\\n' \"\${run_script%/run.sh}\"")
+        println(f, "    bash \"\$run_script\"")
+        println(f, "done")
+    end
+    chmod(run_script, 0o755)
+    return nothing
 end
 
 function _write_rabi_folder(;
@@ -268,6 +317,7 @@ function _write_rabi_folder(;
         end
     end
 
+    _write_run_script(folder)
     println("Created: $folder")
     return nothing
 end
@@ -323,6 +373,7 @@ function _write_spin_rbh_folder(;
         end
     end
 
+    _write_run_script(folder)
     println("Created: $folder")
     return nothing
 end
@@ -360,6 +411,7 @@ function _write_spin_native_folder(;
         end
     end
 
+    _write_run_script(folder)
     println("Created: $folder")
     return nothing
 end
