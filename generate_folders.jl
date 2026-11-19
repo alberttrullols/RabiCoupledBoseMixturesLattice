@@ -39,9 +39,16 @@ function generate_folders(;
     unitcell_size::Int=2,
     max_occupancy::Int=2,
     nsteps_per_stage::Int=3,
+    observables::Dict{Symbol,Bool}=Dict(
+        observable => observable == OBS_ENERGY for observable in AVAILABLE_OBSERVABLES
+    ),
 )
     model in MODELS || throw(ArgumentError("model must be one of $(join(MODELS, ", "))"))
     solver in SOLVERS || throw(ArgumentError("solver must be one of $(join(SOLVERS, ", "))"))
+    Set(keys(observables)) == Set(AVAILABLE_OBSERVABLES) ||
+        throw(ArgumentError("observables must define every key in AVAILABLE_OBSERVABLES exactly once"))
+    selected_observables = filter(observable -> observables[observable], AVAILABLE_OBSERVABLES)
+    observable_param = isempty(selected_observables) ? "none" : join(selected_observables, ",")
     is_rabi = model == MODEL_RABI
     is_native = !is_rabi && coupling_source == COUPLING_NATIVE
 
@@ -131,7 +138,7 @@ function generate_folders(;
             SpinParams(; L, Jxy, Jz, hx, hz)
             _write_spin_native_folder(;
                 parent_folder, prefix, model, solver, L, Jxy, Jz, hx, hz,
-                nsweeps, maxdims, cutoff, unitcell_size, nsteps_per_stage,
+                nsweeps, maxdims, cutoff, unitcell_size, nsteps_per_stage, observable_param,
             )
             count += 1
         end
@@ -156,7 +163,7 @@ function generate_folders(;
                     parent_folder, prefix, solver, N, L, J, U_a=U, U_b=U, U_ab, t, h,
                     V0=V0_energy, V0_recoil=combo.V0_recoil, kL=combo.kL, N1, dmc_shift,
                     nsweeps, maxdims, cutoff, unitcell_size, max_occupancy,
-                    nsteps_per_stage, extra_fields=combo.extra_fields,
+                    nsteps_per_stage, extra_fields=combo.extra_fields, observable_param,
                 )
                 count += 1
             end
@@ -168,7 +175,7 @@ function generate_folders(;
                 Jxy=sp.Jxy, Jz=sp.Jz, hx=sp.hx, hz=sp.hz, C,
                 V0_recoil=combo.V0_recoil, kL=combo.kL,
                 nsweeps, maxdims, cutoff, unitcell_size, nsteps_per_stage,
-                extra_fields=combo.extra_fields,
+                extra_fields=combo.extra_fields, observable_param,
             )
             count += 1
         end
@@ -222,6 +229,11 @@ function _create_folder(parent_folder::String, folder_name::String)
     return folder
 end
 
+function _write_observables_param(io::IO, observable_param::String)
+    println(io, "observables          $observable_param")
+    return nothing
+end
+
 function _write_run_script(folder::String)
     runner_path = relpath(joinpath(@__DIR__, "run_simulation.jl"), abspath(folder))
     project_path = relpath(@__DIR__, abspath(folder))
@@ -230,23 +242,25 @@ function _write_run_script(folder::String)
         println(f, "#!/usr/bin/env bash")
         println(f, "set -euo pipefail")
         println(f, "cd \"\$(dirname \"\$0\")\"")
-        println(f, "julia_bin=\"\${JULIA:-julia}\"")
-        println(f, "if ! command -v \"\$julia_bin\" >/dev/null 2>&1; then")
-        println(f, "    printf 'Julia executable not found: %s\\n' \"\$julia_bin\" >&2")
-        println(f, "    exit 127")
-        println(f, "fi")
-        println(f, "version=\"\$(\"\$julia_bin\" --version)\"")
-        println(f, "if [[ ! \"\$version\" =~ ^julia\\ version\\ ([0-9]+)\\.([0-9]+) ]]; then")
-        println(f, "    printf 'Could not determine Julia version from: %s\\n' \"\$version\" >&2")
-        println(f, "    exit 1")
-        println(f, "fi")
-        println(f, "major=\"\${BASH_REMATCH[1]}\"")
-        println(f, "minor=\"\${BASH_REMATCH[2]}\"")
-        println(f, "if (( major != 1 || minor < 12 )); then")
-        println(f, "    printf 'Julia 1.12 or later 1.x is required (found %s). Set JULIA to a compatible executable.\\n' \"\$version\" >&2")
-        println(f, "    exit 1")
-        println(f, "fi")
-        println(f, "\"\$julia_bin\" --project=\"$project_path\" -t auto \"$runner_path\" params.dat 2>&1 | tee run.log")
+        print(f, raw"""
+        compatible_julia() {
+            [[ "$1" =~ ^julia\ version\ 1\.([0-9]+)\. ]] && (( 10#${BASH_REMATCH[1]} >= 12 ))
+        }
+
+        julia_cmd=("${JULIA:-julia}")
+        version="$(command -v "${julia_cmd[0]}" >/dev/null && "${julia_cmd[@]}" --version)" || version=""
+        if ! compatible_julia "$version"; then
+            if [[ -z "${JULIA:-}" ]] && command -v julialauncher >/dev/null &&
+                juliaup_version="$(julialauncher +1.12 --version)" && compatible_julia "$juliaup_version"; then
+                julia_cmd=(julialauncher +1.12)
+            else
+                printf 'Julia 1.12 or later 1.x is required (%s: %s).\n' "${julia_cmd[0]}" "${version:-version unavailable}" >&2
+                printf 'Set JULIA to a compatible executable, or install the 1.12 channel with juliaup add 1.12 and put julialauncher on PATH.\n' >&2
+                exit 1
+            fi
+        fi
+        """)
+        println(f, "\"\${julia_cmd[@]}\" --project=\"$project_path\" -t auto \"$runner_path\" params.dat 2>&1 | tee run.log")
     end
     chmod(run_script, 0o755)
     return nothing
@@ -276,6 +290,7 @@ function _write_rabi_folder(;
     N1::Union{Nothing,Int}, dmc_shift::Bool,
     nsweeps::Int, maxdims::Vector{Int}, cutoff::Real,
     unitcell_size::Int, max_occupancy::Int, nsteps_per_stage::Int,
+    observable_param::String,
     extra_fields::Vector{Pair{String,Float64}}=Pair{String,Float64}[],
 )
     n1_tag = N1 === nothing ? "" : @sprintf("_N1_%d", N1)
@@ -301,6 +316,7 @@ function _write_rabi_folder(;
         @printf(f, "V0                  %.12f\n", V0)
         @printf(f, "kL                  %.12f\n", kL)
         println(f, "dmc_shift           $dmc_shift")
+        _write_observables_param(f, observable_param)
         N1 === nothing || println(f, "N1                  $N1")
         for (key, val) in extra_fields
             @printf(f, "%-20s%.12f\n", key, val)
@@ -329,6 +345,7 @@ function _write_spin_rbh_folder(;
     V0_recoil::Real, kL::Real,
     nsweeps::Int, maxdims::Vector{Int}, cutoff::Real,
     unitcell_size::Int, nsteps_per_stage::Int,
+    observable_param::String,
     extra_fields::Vector{Pair{String,Float64}}=Pair{String,Float64}[],
 )
     unitcell_tag = solver == SOLVER_IDMRG ? @sprintf("_uc%d", unitcell_size) : ""
@@ -355,6 +372,7 @@ function _write_spin_rbh_folder(;
         @printf(f, "hx                  %.12f\n", hx)
         @printf(f, "hz                  %.12f\n", hz)
         @printf(f, "C                   %.12f\n", C)
+        _write_observables_param(f, observable_param)
         if !isempty(extra_fields)
             @printf(f, "V0                  %.12f\n", V0_recoil)
             @printf(f, "kL                  %.12f\n", kL)
@@ -383,6 +401,7 @@ function _write_spin_native_folder(;
     L::Int, Jxy::Real, Jz::Real, hx::Real, hz::Real,
     nsweeps::Int, maxdims::Vector{Int}, cutoff::Real,
     unitcell_size::Int, nsteps_per_stage::Int,
+    observable_param::String,
 )
     unitcell_tag = solver == SOLVER_IDMRG ? @sprintf("_uc%d", unitcell_size) : ""
     folder_name = @sprintf(
@@ -400,6 +419,7 @@ function _write_spin_native_folder(;
         @printf(f, "Jz                  %.12f\n", Jz)
         @printf(f, "hx                  %.12f\n", hx)
         @printf(f, "hz                  %.12f\n", hz)
+        _write_observables_param(f, observable_param)
         if solver == SOLVER_DMRG || solver == SOLVER_IDMRG
             println(f, "nsweeps             $nsweeps")
             println(f, "maxdims             $(join(maxdims, ","))")

@@ -7,7 +7,20 @@ const MODEL = MODEL_RABI                # or MODEL_XXZ / MODEL_TFIM
 const SOLVER = SOLVER_ED
 const PARAMETRIZATION = PARAM_LATTICE    # or PARAM_MICROSCOPIC
 const COUPLING_SOURCE = COUPLING_RBH     # only used when MODEL != MODEL_RABI; or COUPLING_NATIVE
-const PREFIX = "rabi_ring"
+const PREFIX = "test"
+
+const OBSERVABLES = Dict{Symbol, Bool}(
+    OBS_ENERGY                   => true,
+    OBS_ENERGY_PER_PARTICLE      => true,
+    OBS_P                        => true,
+    OBS_P2                       => true,
+    OBS_P4                       => true,
+    OBS_PX                       => true,
+    OBS_POLARIZATION_CORRELATIONS => true,
+    OBS_SPIN_SPIN_CORRELATIONS   => true,
+    OBS_SK                       => true,
+    OBS_SK_SPECTRUM              => true,
+)
  
 size_pairs = [(2, 2)]
 
@@ -57,6 +70,7 @@ total = generate_folders(;
     t_values, h_values, V0_values, kL, N1_values, dmc_shift=DMC_SHIFT,
     prefix=PREFIX, parent_folder, nsweeps, maxdims, cutoff,
     unitcell_size, max_occupancy, nsteps_per_stage,
+    observables=OBSERVABLES,
 )
 
 println("Total folders created: $total")

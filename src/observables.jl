@@ -66,7 +66,8 @@ function transverse_polarization(psi::AbstractVector{<:Number}, basis, N::Int, L
             result = hop_matrix_element(state, src, dst)
             result === nothing && continue
             new_state, amplitude = result
-            beta = index[new_state]
+            beta = get(index, new_state, nothing)
+            beta === nothing && continue
             total += conj(psi[beta]) * amplitude * ca
         end
     end
